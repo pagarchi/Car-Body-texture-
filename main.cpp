@@ -1,7 +1,7 @@
 // BodyTex.asi v0.1 - GTA San Andreas (1.0 US) - plugin-sdk
 // Category 1: apply any in-game texture to car BODY materials only
 // Category 2: code-only animated paint jobs (no images)
-// F9 opens the mouse menu (camera frozen, free cursor, RGB-border UI).
+// Typing PRS opens the mouse menu (camera frozen, free cursor, RGB-border UI).
 // Shortcuts with menu closed: Num6/Num4 next/prev | Num9/Num3 +-100 (cat 1) | Num0 off
 #include "plugin.h"
 #include "common.h"
@@ -264,6 +264,250 @@ static bool Shape(int id, float x, float y) {
             bool ring = r > 0.75f && r < 0.9f;
             bool vl = fabsf(x) < 0.07f && fabsf(y) < 0.9f;
             bool dr = y > 0 && x > 0 && fabsf(x - y) < 0.1f && r < 0.9f;
+            bool dl = y > 0 && x < 0 && fabsf(x + y) < 0.1f && r < 0.9f;
+            return ring || vl || dr || dl;
+        }
+        default: {
+            bool head = (x * x + (y + 0.15f) * (y + 0.15f)) < 0.42f;
+            bool jaw = fabsf(x) < 0.35f && y > 0.2f && y < 0.75f;
+            bool eyes = (powf(fabsf(x) - 0.27f, 2) + powf(y + 0.15f, 2)) < 0.04f;
+            bool nose = (x * x + (y - 0.12f) * (y - 0.12f)) < 0.0064f;
+            return (head || jaw) && !eyes && !nose;
+        }
+    }
+}
+static uint32_t Pixel(int design, float u, float v, float t) {
+    float r = 0, g = 0, b = 0;
+    const float kPi = 3.14159265f;
+    switch (design) {
+        case 0: Hsv(u + v * 0.5f + t * 0.3f + 0.15f * sinf(v * 12 + t * 2), 1, 1, r, g, b); break;
+        case 1: {
+            float fl = Cl((1 - v) * 1.4f + 0.35f * sinf(u * 18 + t * 6) * sinf(v * 9 - t * 5));
+            r = fminf(1, fl * 2); g = Cl(fl * 2 - 0.7f); b = Cl(fl * 3 - 2.4f); break;
+        }
+        case 2: {
+            float val = sinf(u * 10 + t) + sinf(v * 8 - t * 1.3f) + sinf((u + v) * 6 + t * 0.7f) + sinf(sqrtf(u * u + v * v) * 12 - t);
+            r = 0.5f + 0.5f * sinf(val * kPi * 0.5f); g = 0.5f + 0.5f * sinf(val * kPi * 0.5f + 2); b = 0.5f + 0.5f * sinf(val * kPi * 0.5f + 4); break;
+        }
+        case 3: {
+            int col = (int)(u * 24), row = (int)(v * 24);
+            float sp = 0.3f + Hh(col) * 0.7f;
+            float head = fmodf(t * sp + Hh(col, 7), 1.0f);
+            float d = fmodf(head - v + 1.0f, 1.0f);
+            float br = d < 0.35f ? 1 - d / 0.35f : 0;
+            float mask = Hh(col, row, (int)(t * 8)) > 0.4f ? 1.0f : 0.5f;
+            br *= mask;
+            r = d < 0.03f ? br : 0; g = br; b = br * 0.25f; break;
+        }
+        case 4: {
+            float su = u * 4 + t * 0.25f, sv = v * 4;
+            int id = (int)(Hh((int)floorf(su), (int)floorf(sv)) * 5) % 5;
+            float x = (su - floorf(su)) * 2 - 1, y = (sv - floorf(sv)) * 2 - 1;
+            if (Shape(id, x, y)) Hsv(t * 0.2f + id * 0.2f, 0.9f, 1, r, g, b);
+            else { Hsv(t * 0.1f + v * 0.3f, 0.8f, 0.25f, r, g, b); }
+            break;
+        }
+        case 5: {
+            float d1 = fabsf(fmodf(u * 3 + v * 3 + t * 0.5f, 1.0f) - 0.5f);
+            float d2 = fabsf(fmodf(u * 2 - v * 2 - t * 0.4f + 10.0f, 1.0f) - 0.5f);
+            float in = (expf(-d1 * d1 * 400) + expf(-d2 * d2 * 400)) * (0.6f + 0.4f * sinf(t * 6));
+            Hsv(t * 0.2f + u, 1, 1, r, g, b); r *= in; g *= in; b *= in; break;
+        }
+        case 6: {
+            float in = 0;
+            for (int i = 0; i < 3; i++) {
+                float cx = 0.2f + 0.3f * i + 0.06f * sinf(v * 30 + Hh((int)(t * 6), i) * 10) + 0.04f * sinf(v * 80 + i);
+                float d = fabsf(u - cx);
+                bool on = Hh((int)(t * 10), i, 3) > 0.55f;
+                if (on) in += expf(-d * d * 5000) + 0.25f * expf(-d * d * 300);
+            }
+            float bg = 0.05f + 0.05f * sinf(t * 3);
+            r = Cl(in * 0.8f + bg * 0.3f); g = Cl(in * 0.9f + bg * 0.3f); b = Cl(in + bg); break;
+        }
+        case 7: {
+            float x = fmodf(u * 2, 1.0f) - 0.5f, y = fmodf(v * 2, 1.0f) - 0.5f;
+            float rr = sqrtf(x * x + y * y);
+            float q = fmodf(rr * 4 - t * 1.2f + 10.0f, 1.0f) - 0.5f;
+            float in = expf(-q * q * 200);
+            Hsv(0.5f + rr * 0.8f + t * 0.1f, 1, 1, r, g, b); r *= in; g *= in; b *= in; break;
+        }
+        default: {
+            int row = (int)(v * 16);
+            float sp = 0.4f + Hh(row) * 0.8f;
+            float head = fmodf(t * sp + Hh(row, 5), 1.0f);
+            float d = fmodf(head - u + 1.0f, 1.0f);
+            float a = d < 0.3f ? powf(1 - d / 0.3f, 2.0f) : 0;
+            Hsv(Hh(row, 9) + t * 0.1f, 1, 1, r, g, b); r *= a; g *= a; b *= a; break;
+        }
+    }
+    return Pack(r, g, b);
+}
+static bool EnsureDyn() {
+    if (g_dynTex) return true;
+    g_dynRaster = RwRasterCreate(DYN_SIZE, DYN_SIZE, 32, rwRASTERTYPETEXTURE | rwRASTERFORMAT8888);
+    if (!g_dynRaster) return false;
+    g_dynTex = RwTextureCreate(g_dynRaster);
+    if (!g_dynTex) return false;
+    strncpy(g_dynTex->name, "bt_dyn", 31);
+    RwTextureSetFilterMode(g_dynTex, rwFILTERLINEAR);
+    RwTextureSetAddressing(g_dynTex, rwTEXTUREADDRESSWRAP);
+    return true;
+}
+static void UpdateDyn() {
+    if (!g_dynRaster) return;
+    float t = CTimer::m_snTimeInMilliseconds / 1000.0f;
+    RwUInt8* px = RwRasterLock(g_dynRaster, 0, rwRASTERLOCKWRITE);
+    if (!px) return;
+    int stride = RwRasterGetStride(g_dynRaster);
+    for (int y = 0; y < DYN_SIZE; y++) {
+        uint32_t* row = (uint32_t*)(px + y * stride);
+        for (int x = 0; x < DYN_SIZE; x++)
+            row[x] = Pixel(g_design, (x + 0.5f) / DYN_SIZE, (y + 0.5f) / DYN_SIZE, t);
+    }
+    RwRasterUnlock(g_dynRaster);
+}
+
+// ---------------- apply / restore ----------------
+static void ApplyAll() {
+    if (!g_veh) return;
+    RwTexture* tex = nullptr;
+    bool glow = false;
+    if (g_mode == 1) tex = CurTex();
+    else if (g_mode == 2) { if (EnsureDyn()) { UpdateDyn(); tex = g_dynTex; } glow = g_design >= FIRST_GLOW; }
+    if (!tex) return;
+    RwSurfaceProperties glowProps;
+    glowProps.ambient = 2.5f; glowProps.specular = 0.0f; glowProps.diffuse = 0.0f;
+    for (auto& r : g_recs) {
+        RpMaterialSetTexture(r.mat, tex);
+        if (glow) RpMaterialSetSurfaceProperties(r.mat, &glowProps);
+        else RpMaterialSetSurfaceProperties(r.mat, &r.origProps);
+    }
+}
+static void Release() {
+    if (g_veh) {
+        bool ok = VehicleAlive(g_veh) && g_veh->m_nModelIndex == g_vehModel;
+        if (ok) {
+            for (auto& r : g_recs) {
+                RpMaterialSetTexture(r.mat, r.origTex);
+                RpMaterialSetSurfaceProperties(r.mat, &r.origProps);
+                if (r.origTex) RwTextureDestroy(r.origTex);
+            }
+            g_veh->m_nPrimaryColor = g_origCols[0];
+            g_veh->m_nSecondaryColor = g_origCols[1];
+            g_veh->m_nTertiaryColor = g_origCols[2];
+            g_veh->m_nQuaternaryColor = g_origCols[3];
+        } else {
+            Log("vehicle gone, dropping %d records without restore", (int)g_recs.size());
+        }
+    }
+    g_recs.clear();
+    g_veh = nullptr;
+    g_vehModel = -1;
+}
+static void Acquire(CVehicle* v) {
+    if (!v || !v->m_pRwClump) return;
+    Log("== analyzing vehicle model %d ==", (int)v->m_nModelIndex);
+    g_recs.clear();
+    RpClumpForAllAtomics(v->m_pRwClump, AtomCB, nullptr);
+    Log("body materials found: %d", (int)g_recs.size());
+    g_veh = v;
+    g_vehModel = v->m_nModelIndex;
+    g_origCols[0] = v->m_nPrimaryColor; g_origCols[1] = v->m_nSecondaryColor;
+    g_origCols[2] = v->m_nTertiaryColor; g_origCols[3] = v->m_nQuaternaryColor;
+    // white paint so the texture is not tinted by the car color
+    v->m_nPrimaryColor = v->m_nSecondaryColor = v->m_nTertiaryColor = v->m_nQuaternaryColor = 1;
+    ApplyAll();
+}
+
+// ---------------- input ----------------
+static bool Pressed(int vk) {
+    static bool prev[256];
+    bool now = (GetAsyncKeyState(vk) & 0x8000) != 0;
+    bool hit = now && !prev[vk & 255];
+    prev[vk & 255] = now;
+    return hit;
+}
+
+// typing the letters P, R, S one after another (like a cheat code) toggles the menu
+static bool CheatTyped() {
+    static bool prev[256];
+    static char buf[3] = {0, 0, 0};
+    bool hit = false;
+    for (int vk = 'A'; vk <= 'Z'; vk++) {
+        bool now = (GetAsyncKeyState(vk) & 0x8000) != 0;
+        if (now && !prev[vk]) {
+            buf[0] = buf[1]; buf[1] = buf[2]; buf[2] = (char)vk;
+            if (buf[0] == 'P' && buf[1] == 'R' && buf[2] == 'S') {
+                hit = true;
+                buf[0] = buf[1] = buf[2] = 0;
+            }
+        }
+        prev[vk] = now;
+    }
+    return hit;
+}
+
+// ---------------- menu state ----------------
+static bool g_menu = false;
+static float g_cx = 0, g_cy = 0;           // virtual cursor (screen px)
+static bool g_lmbPrev = true, g_click = false;
+static char g_txd[32] = "";
+static bool g_focus = false;
+static char g_status[96] = "";
+static unsigned g_statusT = 0;
+static const float MOUSE_SENS = 1.0f;      // tune if cursor feels too slow/fast
+
+static float SW() { return (float)RsGlobal.maximumWidth; }
+static float SH() { return (float)RsGlobal.maximumHeight; }
+static void Status(const char* fmt, ...) {
+    va_list a; va_start(a, fmt);
+    vsnprintf(g_status, sizeof(g_status), fmt, a);
+    va_end(a);
+    g_statusT = CTimer::m_snTimeInMilliseconds;
+}
+
+// ---------------- actions ----------------
+static void SetMode(int m) {
+    g_mode = m;
+    if (m == 0) { if (g_veh) Release(); return; }
+    if (m == 1 && !CurTex()) Step(1);
+    ApplyAll();
+}
+static void Nav(int n) {
+    int d = n > 0 ? 1 : -1;
+    for (int i = 0; i < abs(n); i++) if (!Step(d)) break;
+    ApplyAll();
+}
+static void GoTxd() {
+    if (!g_txd[0]) { Status("type a TXD name first"); return; }
+    if (!CTxdStore::ms_pTxdPool) return;
+    g_nSlots = CTxdStore::ms_pTxdPool->m_nSize;
+    int s = CTxdStore::FindTxdSlot(g_txd);
+    if (s < 0 || !SlotValid(s)) { Status("TXD '%s' not found", g_txd); return; }
+    OpenSlot(s);
+    g_idx = 0;
+    if (g_tex.empty()) { Status("TXD '%s' has no textures / could not load", g_txd); return; }
+    g_mode = 1;
+    ApplyAll();
+    Status("loaded TXD '%s' (%d textures)", g_txd, (int)g_tex.size());
+}
+static void ToggleMenu() {
+    g_menu = !g_menu;
+    if (g_menu) {
+        g_cx = SW() * 0.5f; g_cy = SH() * 0.5f;
+        g_lmbPrev = true; g_focus = false;
+    } else {
+        g_focus = false;
+        CPad::GetPad(0)->DisablePlayerControls = false;
+    }
+}
+
+// plugin-sdk's CMouseControllerState has no members named X/Y; access the two mouse-delta floats by
+// their fixed GTA SA layout: 7 bools + pad (8 bytes), float wheel (+8), float X (+12), float Y (+16)
+static float& MX(CMouseControllerState& m) { return *(float*)((char*)&m + 12); }
+static float& MY(CMouseControllerState& m) { return *(float*)((char*)&m + 16); }
+
+// ---------------- mouse (osf(x - y) < 0.1f && r < 0.9f;
             bool dl = y > 0 && x < 0 && fabsf(x + y) < 0.1f && r < 0.9f;
             return ring || vl || dr || dl;
         }
