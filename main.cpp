@@ -6,6 +6,8 @@
 #include "plugin.h"
 #include "common.h"
 #include "CTxdStore.h"
+#include "TxdDef.h"
+#include "NodeName.h"
 #include "CStreaming.h"
 #include "CPools.h"
 #include "CVehicle.h"
@@ -145,15 +147,21 @@ static int g_nSlots = 0, g_slot = -1, g_idx = 0;
 static bool g_opened = false, g_weLoaded = false;
 static std::vector<RwTexture*> g_tex;
 
+static RwTexDictionary* TxdGet(int slot) {
+    auto pool = CTxdStore::ms_pTxdPool;
+    if (!pool || slot < 0 || slot >= pool->m_nSize || pool->IsFreeSlotAtIndex(slot)) return nullptr;
+    TxdDef* d = pool->GetAt(slot);
+    return d ? d->m_pRwDictionary : nullptr;
+}
 static bool SlotValid(int s) {
     return s >= 0 && s < g_nSlots && !CTxdStore::ms_pTxdPool->IsFreeSlotAtIndex(s);
 }
 static bool LoadTxd(int slot) {
     __try {
-        if (CTxdStore::GetTxd(slot)) return true;
+        if (TxdGet(slot)) return true;
         CStreaming::RequestModel(20000 + slot, 2);
         CStreaming::LoadAllRequestedModels(false);
-        return CTxdStore::GetTxd(slot) != nullptr;
+        return TxdGet(slot) != nullptr;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return false;
     }
@@ -173,9 +181,9 @@ static void CloseSlot() {
 static void OpenSlot(int s) {
     CloseSlot();
     g_slot = s;
-    bool was = CTxdStore::GetTxd(s) != nullptr;
+    bool was = TxdGet(s) != nullptr;
     if (!LoadTxd(s)) return;
-    RwTexDictionary* dict = CTxdStore::GetTxd(s);
+    RwTexDictionary* dict = TxdGet(s);
     if (!dict) return;
     CTxdStore::AddRef(s);
     g_opened = true;
@@ -270,7 +278,7 @@ static bool Shape(int id, float x, float y) {
 }
 static uint32_t Pixel(int design, float u, float v, float t) {
     float r = 0, g = 0, b = 0;
-    const float PI = 3.14159265f;
+    const float kPi = 3.14159265f;
     switch (design) {
         case 0: Hsv(u + v * 0.5f + t * 0.3f + 0.15f * sinf(v * 12 + t * 2), 1, 1, r, g, b); break;
         case 1: {
@@ -279,7 +287,7 @@ static uint32_t Pixel(int design, float u, float v, float t) {
         }
         case 2: {
             float val = sinf(u * 10 + t) + sinf(v * 8 - t * 1.3f) + sinf((u + v) * 6 + t * 0.7f) + sinf(sqrtf(u * u + v * v) * 12 - t);
-            r = 0.5f + 0.5f * sinf(val * PI * 0.5f); g = 0.5f + 0.5f * sinf(val * PI * 0.5f + 2); b = 0.5f + 0.5f * sinf(val * PI * 0.5f + 4); break;
+            r = 0.5f + 0.5f * sinf(val * kPi * 0.5f); g = 0.5f + 0.5f * sinf(val * kPi * 0.5f + 2); b = 0.5f + 0.5f * sinf(val * kPi * 0.5f + 4); break;
         }
         case 3: {
             int col = (int)(u * 24), row = (int)(v * 24);
