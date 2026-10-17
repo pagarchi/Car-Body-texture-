@@ -483,19 +483,24 @@ static void ToggleMenu() {
     }
 }
 
+// plugin-sdk's CMouseControllerState has no members named X/Y; access the two mouse-delta floats by
+// their fixed GTA SA layout: 7 bools + pad (8 bytes), float wheel (+8), float X (+12), float Y (+16)
+static float& MX(CMouseControllerState& m) { return *(float*)((char*)&m + 12); }
+static float& MY(CMouseControllerState& m) { return *(float*)((char*)&m + 16); }
+
 // ---------------- mouse (own virtual cursor, camera frozen) ----------------
 static void UpdateMouse() {
     auto& m = CPad::NewMouseControllerState;
-    g_cx += m.X * MOUSE_SENS;
-    g_cy += m.Y * MOUSE_SENS;
+    g_cx += MX(m) * MOUSE_SENS;
+    g_cy += MY(m) * MOUSE_SENS;
     if (g_cx < 0) g_cx = 0; if (g_cx > SW() - 1) g_cx = SW() - 1;
     if (g_cy < 0) g_cy = 0; if (g_cy > SH() - 1) g_cy = SH() - 1;
     bool lmb = m.lmb;
     g_click = lmb && !g_lmbPrev;
     g_lmbPrev = lmb;
-    m.X = m.Y = 0; m.lmb = m.rmb = m.mmb = false;  // camera/shoot get nothing
+    MX(m) = MY(m) = 0; m.lmb = m.rmb = m.mmb = false;  // camera/shoot get nothing
     auto& t = CPad::PCTempMouseControllerState;
-    t.X = t.Y = 0; t.lmb = t.rmb = t.mmb = false;
+    MX(t) = MY(t) = 0; t.lmb = t.rmb = t.mmb = false;
     CPad::GetPad(0)->DisablePlayerControls = true;
 }
 static void HandleTyping() {
@@ -672,7 +677,7 @@ static void DrawHud() {
     if (g_menu) {
         // camera must stay frozen even if the pad was refreshed after Process
         auto& m = CPad::NewMouseControllerState;
-        m.X = m.Y = 0;
+        MX(m) = MY(m) = 0;
         DrawMenu();
         CFont::DrawFonts();
         return;
