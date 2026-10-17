@@ -32,8 +32,20 @@ jobs:
           if (-not $sln) { Write-Host "ERROR: no .sln generated"; exit 1 }
           Write-Host "sln: $($sln.FullName)"
           Select-String -Path $sln.FullName -Pattern '^Project' | ForEach-Object { Write-Host $_.Line }
-          msbuild $sln.FullName /t:plugin_sa /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v143 /m
-          if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: msbuild failed (see project list above)"; exit 1 }
+          $cfgs = @()
+          foreach ($l in (Get-Content $sln.FullName)) {
+            if ($l -match '^\s*([A-Za-z0-9_]+)\|([A-Za-z0-9_]+) = ([A-Za-z0-9_]+)\|([A-Za-z0-9_]+)\s*$' -and $Matches[1] -eq $Matches[3]) {
+              $cfgs += [pscustomobject]@{ Cfg = $Matches[1]; Plat = $Matches[2] }
+            }
+          }
+          $cfgs | ForEach-Object { Write-Host "SOLUTION CONFIG: $($_.Cfg)|$($_.Plat)" }
+          $pick = $cfgs | Where-Object { $_.Cfg -eq 'Release' } | Select-Object -First 1
+          if (-not $pick) { $pick = $cfgs | Where-Object { $_.Cfg -match '^Release' -and $_.Cfg -notmatch 'Unreal|RWD3D9' } | Select-Object -First 1 }
+          if (-not $pick) { $pick = $cfgs | Where-Object { $_.Cfg -match 'Release' } | Select-Object -First 1 }
+          if (-not $pick) { Write-Host "ERROR: no Release configuration in solution"; exit 1 }
+          Write-Host "Building config: $($pick.Cfg)|$($pick.Plat)"
+          msbuild $sln.FullName /t:Plugin_SA /p:Configuration=$($pick.Cfg) /p:Platform=$($pick.Plat) /p:PlatformToolset=v143 /m
+          if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: msbuild failed (see messages above)"; exit 1 }
           Get-ChildItem $env:PLUGIN_SDK_DIR -Recurse -Filter *.lib | Where-Object { $_.FullName -notmatch 'shared' } | ForEach-Object { Write-Host "LIB: $($_.FullName)" }
       - name: Compile BodyTex.asi
         shell: pwsh
