@@ -12,6 +12,11 @@ jobs:
       - name: Clone plugin-sdk
         shell: pwsh
         run: git clone --depth 1 https://github.com/DK22Pac/plugin-sdk.git
+      - name: Show CPad.h mouse struct
+        shell: pwsh
+        run: |
+          $h = Get-ChildItem plugin-sdk -Recurse -Filter CPad.h | Select-Object -First 1
+          Get-Content $h.FullName | Select-Object -Skip 70 -First 30 | ForEach-Object { Write-Host $_ }
       - name: Build plugin-sdk lib (Win32)
         shell: pwsh
         run: |
