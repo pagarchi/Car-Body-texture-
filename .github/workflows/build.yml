@@ -58,10 +58,12 @@ jobs:
           $lib = (Get-ChildItem -Path $sdk -Recurse -Filter "*.lib" | Where-Object { $_.FullName -notmatch 'shared' -and $_.Name -match 'plugin' } | Select-Object -First 1).FullName
           if (-not $lib) { Write-Host "ERROR: plugin lib not found"; exit 1 }
           Write-Host "Using lib: $lib"
-          cl /nologo /LD /EHsc /MT /O2 /std:c++17 `
-            /DGTASA /D_GTA_SA /DPLUGIN_SGV_10US /DRW /D_CRT_SECURE_NO_WARNINGS /D_USE_MATH_DEFINES `
-            /I"$sdk\shared" /I"$sdk\shared\game" /I"$sdk\plugin_sa" /I"$sdk\plugin_sa\game_sa" /I"$sdk\plugin_sa\game_sa\rw" `
-            main.cpp /Fe:BodyTex.asi /link "$lib" user32.lib
+          cl /nologo /LD /EHsc /MT /O2 /GL /std:c++latest `
+            /DGTASA /DPLUGIN_SGV_10US /DRW /D_CRT_NON_CONFORMING_SWPRINTFS /D_DX9_SDK_INSTALLED /D_MBCS `
+            /D_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING /D_CRT_SECURE_NO_WARNINGS /D_USE_MATH_DEFINES `
+            /I"$sdk\plugin_sa" /I"$sdk\plugin_sa\game_sa" /I"$sdk\plugin_sa\game_sa\enums" /I"$sdk\plugin_sa\game_sa\rw" `
+            /I"$sdk\safetyhook" /I"$sdk\shared" /I"$sdk\shared\game" `
+            main.cpp /Fe:BodyTex.asi /link /LTCG "$lib" user32.lib
           if ($LASTEXITCODE -ne 0) { exit 1 }
       - uses: actions/upload-artifact@v4
         with:
