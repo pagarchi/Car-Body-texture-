@@ -563,6 +563,8 @@ static bool Button(const char* label, float x, float y, float w, float h, bool s
 }
 
 static void DrawMenu() {
+    static bool logged = false;
+    if (!logged) { logged = true; Log("menu drawn"); }
     float W = SW(), H = SH();
     float pw = W * 0.48f, ph = H * 0.66f, px = (W - pw) * 0.5f, py = (H - ph) * 0.5f;
     float pad = 14.0f, gap = 8.0f, bh = H * 0.058f;
@@ -636,7 +638,7 @@ static void DrawMenu() {
 
 static void Process() {
     CVehicle* v = FindPlayerVehicle(-1, false);
-    if (Pressed(VK_F9)) ToggleMenu();
+    if (Pressed(VK_F9)) { ToggleMenu(); Log("F9 pressed, menu=%d", g_menu ? 1 : 0); }
     if (g_menu) {
         UpdateMouse();
         HandleTyping();
