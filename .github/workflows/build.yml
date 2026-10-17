@@ -1,0 +1,36 @@
+# Put this file at .github/workflows/build.yml in your repo, next to main.cpp
+name: Build BodyTex ASI
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - name: Clone plugin-sdk
+        shell: pwsh
+        run: git clone --depth 1 https://github.com/DK22Pac/plugin-sdk.git
+      - name: Build plugin-sdk lib (Win32)
+        shell: pwsh
+        run: |
+          $env:PLUGIN_SDK_DIR = "$PWD\plugin-sdk"
+          cd plugin-sdk
+          .\tools\premake\premake5.exe vs2022
+          msbuild plugin_sdk.sln /t:plugin_sa /p:Configuration=Release /p:Platform=Win32 /m
+          Get-ChildItem -Recurse -Filter *.lib | Select-Object FullName
+      - name: Compile BodyTex.asi
+        shell: pwsh
+        run: |
+          $sdk = "$PWD\plugin-sdk"
+          $lib = (Get-ChildItem -Path $sdk -Recurse -Filter "plugin*.lib" | Where-Object { $_.FullName -match "Release" } | Select-Object -First 1).FullName
+          Write-Host "Using lib: $lib"
+          cl /nologo /LD /EHsc /MT /O2 /std:c++17 `
+            /DGTASA /D_GTA_SA /DPLUGIN_SGV_10US /DRW /D_CRT_SECURE_NO_WARNINGS /D_USE_MATH_DEFINES `
+            /I"$sdk\shared" /I"$sdk\shared\game" /I"$sdk\plugin_sa" /I"$sdk\plugin_sa\game_sa" /I"$sdk\plugin_sa\game_sa\rw" `
+            main.cpp /Fe:BodyTex.asi /link "$lib" user32.lib
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BodyTex-asi
+          path: BodyTex.asi
