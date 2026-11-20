@@ -1,0 +1,97 @@
+# Put this file at .github/workflows/build.yml in your repo, next to main.cpp
+name: Build BodyTex ASI
+on: [push, workflow_dispatch]
+env:
+  # Pin plugin-sdk here for reproducible builds: put a commit hash (the log of the "Clone plugin-sdk" step prints the
+  # exact commit that was built, copy it from there). Empty = latest default branch, like before.
+  PLUGIN_SDK_REF: ""
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - name: Clone plugin-sdk
+        shell: pwsh
+        run: |
+          if ($env:PLUGIN_SDK_REF) {
+            git clone https://github.com/DK22Pac/plugin-sdk.git
+            git -C plugin-sdk checkout $env:PLUGIN_SDK_REF
+            if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: cannot check out $env:PLUGIN_SDK_REF"; exit 1 }
+          } else {
+            git clone --depth 1 https://github.com/DK22Pac/plugin-sdk.git
+          }
+          Write-Host "plugin-sdk commit: $(git -C plugin-sdk rev-parse HEAD)"
+      - name: Show CPad.h mouse struct
+        shell: pwsh
+        run: |
+          $h = Get-ChildItem plugin-sdk -Recurse -Filter CPad.h | Select-Object -First 1
+          Get-Content $h.FullName | Select-Object -Skip 70 -First 30 | ForEach-Object { Write-Host $_ }
+      - name: Build plugin-sdk lib (Win32)
+        shell: pwsh
+        run: |
+          Get-ChildItem plugin-sdk -Directory | ForEach-Object { Write-Host "DIR: $($_.Name)" }
+          $lua = Get-ChildItem plugin-sdk -Recurse -Filter premake5.lua | Select-Object -First 1
+          $exe = Get-ChildItem plugin-sdk -Recurse -Filter premake5.exe | Select-Object -First 1
+          if (-not $lua) { Write-Host "ERROR: premake5.lua not found anywhere"; exit 1 }
+          if (-not $exe) { Write-Host "ERROR: premake5.exe not found anywhere"; exit 1 }
+          Write-Host "lua: $($lua.FullName)"
+          Write-Host "exe: $($exe.FullName)"
+          $env:PLUGIN_SDK_DIR = "$PWD\plugin-sdk"
+          Push-Location $lua.DirectoryName
+          & $exe.FullName vs2022
+          $sln = Get-ChildItem "$env:PLUGIN_SDK_DIR" -Recurse -Filter *.sln | Select-Object -First 1
+          if (-not $sln) { & $exe.FullName vs2019 }
+          Pop-Location
+          $sln = Get-ChildItem "$env:PLUGIN_SDK_DIR" -Recurse -Filter *.sln | Select-Object -First 1
+          if (-not $sln) { Write-Host "ERROR: no .sln generated"; exit 1 }
+          Write-Host "sln: $($sln.FullName)"
+          Select-String -Path $sln.FullName -Pattern '^Project' | ForEach-Object { Write-Host $_.Line }
+          $cfgs = @()
+          $in = $false
+          foreach ($l in (Get-Content $sln.FullName)) {
+            if ($l -match 'SolutionConfigurationPlatforms') { $in = $true; continue }
+            if ($in -and $l -match 'EndGlobalSection') { break }
+            if ($in -and $l -match '^\s*(.+?)\|(.+?)\s*=') {
+              $cfgs += [pscustomobject]@{ Cfg = $Matches[1].Trim(); Plat = $Matches[2].Trim() }
+              Write-Host "SOLUTION CONFIG: $($l.Trim())"
+            }
+          }
+          Write-Host "Found $($cfgs.Count) solution configs"
+          $pick = $cfgs | Where-Object { $_.Cfg -eq 'Release' } | Select-Object -First 1
+          if (-not $pick) { $pick = $cfgs | Where-Object { $_.Cfg -match 'Release' -and $_.Cfg -notmatch 'Unreal|RWD3D9|Debug' } | Select-Object -First 1 }
+          if (-not $pick) { $pick = $cfgs | Where-Object { $_.Cfg -match 'Release' } | Select-Object -First 1 }
+          if (-not $pick) { Write-Host "ERROR: no Release configuration in solution"; Select-String -Path $sln.FullName -Pattern 'Release' | Select-Object -First 20 | ForEach-Object { Write-Host $_.Line }; exit 1 }
+          Write-Host "Building config: $($pick.Cfg)|$($pick.Plat)"
+          msbuild $sln.FullName /t:Plugin_SA "/p:Configuration=$($pick.Cfg)" "/p:Platform=$($pick.Plat)" /p:PlatformToolset=v143 /m
+          if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: msbuild failed (see messages above)"; exit 1 }
+          Get-ChildItem $env:PLUGIN_SDK_DIR -Recurse -Filter *.lib | Where-Object { $_.FullName -notmatch 'shared' } | ForEach-Object { Write-Host "LIB: $($_.FullName)" }
+      - name: Compile BodyTex.asi
+        shell: pwsh
+        run: |
+          $sdk = "$PWD\plugin-sdk"
+          # choose the plugin lib, and only accept one that really is x86 (machine type 14C)
+          $cands = Get-ChildItem -Path $sdk -Recurse -Filter "*.lib" | Where-Object { $_.FullName -notmatch 'shared' -and $_.Name -match 'plugin' }
+          $lib = $null
+          foreach ($c in $cands) {
+            $hdr = (& dumpbin /headers $c.FullName 2>&1 | Out-String)
+            if ($hdr -match '14C machine \(x86\)') { $lib = $c.FullName; break }
+            Write-Host "skipping non-x86 lib: $($c.FullName)"
+          }
+          if (-not $lib) { Write-Host "ERROR: no x86 plugin lib found"; exit 1 }
+          Write-Host "Using x86 lib: $lib"
+          cl /nologo /LD /EHsc /MT /O2 /GL /std:c++latest `
+            /DGTASA /DPLUGIN_SGV_10US /DRW /D_CRT_NON_CONFORMING_SWPRINTFS /D_DX9_SDK_INSTALLED /D_MBCS `
+            /D_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING /D_CRT_SECURE_NO_WARNINGS /D_USE_MATH_DEFINES `
+            /I"$sdk\plugin_sa" /I"$sdk\plugin_sa\game_sa" /I"$sdk\plugin_sa\game_sa\enums" /I"$sdk\plugin_sa\game_sa\rw" `
+            /I"$sdk\safetyhook" /I"$sdk\shared" /I"$sdk\shared\game" `
+            main.cpp /Fe:BodyTex.asi /link /MACHINE:X86 /LTCG "$lib" user32.lib windowscodecs.lib ole32.lib uuid.lib
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BodyTex-asi
+          path: BodyTex.asi
+          if-no-files-found: error
+          
